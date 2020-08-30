@@ -25,7 +25,9 @@ parser.add_argument('--test_interval', type=int, default=5, help='Test and save 
 parser.add_argument('--max_epoch',      type=int, default=150, help='Maximum number of epochs');
 parser.add_argument('--trainfunc', type=str, default="angleproto",    help='Loss function');
 parser.add_argument('--augment_anchor', dest='augment_anchor', action='store_true', help='Augment anchor')
-parser.add_argument('--augment_type',   type=int, default=3, help='0: no augment, 1: noise only, 2: noise or RIR, 3: noise and RIR');
+parser.add_argument('--augment_type',   type=int, default=3, help='0: no augment, 1: noise only, 2: noise or RIR');
+parser.add_argument('--n_mels',   type=int, default=40, help='Number of mel filterbanks');
+parser.add_argument('--log_input', dest='log_input', action='store_true', help='Log input features')
 
 ## Learning rates
 parser.add_argument('--lr', type=float, default=0.001,      help='Learning rate');
@@ -99,8 +101,8 @@ if args.eval == True:
     while True:
         if userinp == '':
             quit();
-        elif os.path.exists(userinp):
-            print('%s already exists. Try again.'%(userinp))
+        elif os.path.exists(userinp) or '.' not in userinp:
+            print('Invalid file name %s. Try again.'%(userinp))
             userinp = input()
         else:
             with open(userinp,'w') as outfile:

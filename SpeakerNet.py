@@ -9,34 +9,23 @@ import numpy, math, pdb, sys, random
 import time, os, itertools, shutil, importlib
 from tuneThreshold import tuneThresholdfromScore
 from DatasetLoader import loadWAV
-from loss.angleproto import AngleProtoLoss
-from loss.protoloss import ProtoLoss
 
 class SpeakerNet(nn.Module):
 
-    def __init__(self, lr = 0.0001, model="alexnet50", nOut = 512, encoder_type = 'SAP', normalize = True, trainfunc='contrastive', **kwargs):
+    def __init__(self, lr = 0.0001, model="alexnet50", nOut = 512, encoder_type = 'SAP', normalize = True, trainfunc='contrastive', n_mels=40, log_input=True, **kwargs):
         super(SpeakerNet, self).__init__();
 
-        argsdict = {'nOut': nOut, 'encoder_type':encoder_type}
+        argsdict = {'nOut': nOut, 'encoder_type':encoder_type, 'log_input':log_input, 'n_mels':n_mels}
 
-        SpeakerNetModel = importlib.import_module('models.'+model).__getattribute__(model)
+        SpeakerNetModel = importlib.import_module('models.'+model).__getattribute__('MainModel')
         self.__S__ = SpeakerNetModel(**argsdict).cuda();
 
-        if trainfunc == 'angleproto':
-            self.__L__ = AngleProtoLoss().cuda()
-            self.__train_normalize__    = True
-            self.__test_normalize__     = True
-        elif trainfunc == 'proto':
-            self.__L__ = ProtoLoss().cuda()
-            self.__train_normalize__    = False
-            self.__test_normalize__     = False
-        else:
-            raise ValueError('Undefined loss.')
+        LossFunction = importlib.import_module('loss.'+trainfunc).__getattribute__('LossFunction')
+        self.__L__ = LossFunction(**argsdict).cuda();
 
         self.__optimizer__ = torch.optim.Adam(list(self.__S__.parameters()) + list(self.__L__.parameters()), lr = lr);
 
-        self.torchfb        = transforms.MelSpectrogram(sample_rate=16000, n_fft=512, win_length=400, hop_length=160, f_min=0.0, f_max=8000, pad=0, n_mels=40).cuda();
-        self.instancenorm   = nn.InstanceNorm1d(40).cuda();
+        self.torchfb        = transforms.MelSpectrogram(sample_rate=16000, n_fft=512, win_length=400, hop_length=160, f_min=0.0, f_max=8000, pad=0, n_mels=n_mels).cuda();
 
         print('Initialised network with nOut %d encoder_type %s'%(nOut,encoder_type))
 
@@ -64,14 +53,11 @@ class SpeakerNet(nn.Module):
 
             self.zero_grad();
 
-            data = data.transpose(0,1).unsqueeze(2)
+            data = data.transpose(0,1)
 
             feat = []
             for inp in data:
-
                 outp      = self.__S__.forward(torch.FloatTensor(inp).cuda())
-                if self.__train_normalize__:
-                    outp   = F.normalize(outp, p=2, dim=1)
                 feat.append(outp)
 
             feat = torch.stack(feat,dim=1).squeeze()
@@ -104,7 +90,7 @@ class SpeakerNet(nn.Module):
 
     def evaluateFromList(self, listfilename, print_interval=100, test_path='', num_eval=10, eval_frames=200):
 
-        print('Evaluating with NumEval %d EvalFrames %d Normalize %s'%(num_eval,eval_frames,self.__test_normalize__))
+        print('Evaluating with NumEval %d EvalFrames %d Normalize %s'%(num_eval,eval_frames,self.__L__.test_normalize))
         
         self.eval();
         
@@ -117,7 +103,7 @@ class SpeakerNet(nn.Module):
         with open(listfilename) as listfile:
             while True:
                 line = listfile.readline();
-                if (not line): #  or (len(all_scores)==1000) 
+                if (not line): 
                     break;
 
                 data = line.split();
@@ -139,8 +125,7 @@ class SpeakerNet(nn.Module):
 
             with torch.no_grad():
 
-                feat = self.torchfb(inp1)+1e-6
-                feat = self.instancenorm(feat.log()).unsqueeze(1).detach()
+                feat = self.torchfb(inp1)
 
                 ref_feat = self.__S__.forward(feat).detach().cpu()
 
@@ -170,7 +155,7 @@ class SpeakerNet(nn.Module):
             ref_feat = feats[data[1]].cuda()
             com_feat = feats[data[2]].cuda()
 
-            if self.__test_normalize__:
+            if self.__L__.test_normalize:
                 ref_feat = F.normalize(ref_feat, p=2, dim=1)
                 com_feat = F.normalize(com_feat, p=2, dim=1)
 

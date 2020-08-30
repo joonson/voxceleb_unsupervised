@@ -22,17 +22,15 @@ def worker_init_fn(worker_id):
     numpy.random.seed(numpy.random.get_state()[1][0] + worker_id)
 
 class wav_split(Dataset):
-    def __init__(self, dataset_file_name, max_frames, train_path, musan_path, augment_anchor, augment_type):
+    def __init__(self, dataset_file_name, max_frames, train_path, musan_path, augment_anchor, augment_type, n_mels):
         self.dataset_file_name = dataset_file_name;
         self.max_frames = max_frames;
 
-        # self.instancenorm   = nn.InstanceNorm1d(40)
         self.data_dict = {};
         self.data_list = [];
         self.nFiles = 0;
 
-        self.torchfb        = transforms.MelSpectrogram(sample_rate=16000, n_fft=512, win_length=400, hop_length=160, f_min=0.0, f_max=8000, pad=0, n_mels=40);
-        self.instancenorm   = nn.InstanceNorm1d(40);
+        self.torchfb        = transforms.MelSpectrogram(sample_rate=16000, n_fft=512, win_length=400, hop_length=160, f_min=0.0, f_max=8000, pad=0, n_mels=n_mels);
 
         self.noisetypes = ['noise','speech','music']
 
@@ -98,10 +96,9 @@ class wav_split(Dataset):
 
         audio_aug = numpy.concatenate(audio_aug,axis=0)
 
-        feat = torch.FloatTensor(audio_aug)
-
-        feat = self.torchfb(feat)+1e-6
-        feat = self.instancenorm(feat.log()).detach()
+        with torch.no_grad():
+            feat = torch.FloatTensor(audio_aug)
+            feat = self.torchfb(feat)
 
         return feat
 
@@ -208,9 +205,9 @@ def loadWAVSplit(filename, max_frames):
     return feat;
 
 
-def get_data_loader(dataset_file_name, batch_size, max_frames, nDataLoaderThread, train_path, augment_anchor, augment_type, musan_path, **kwargs):
+def get_data_loader(dataset_file_name, batch_size, max_frames, nDataLoaderThread, train_path, augment_anchor, augment_type, musan_path, n_mels, **kwargs):
     
-    train_dataset = wav_split(dataset_file_name, max_frames, train_path, musan_path, augment_anchor, augment_type)
+    train_dataset = wav_split(dataset_file_name, max_frames, train_path, musan_path, augment_anchor, augment_type, n_mels)
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,

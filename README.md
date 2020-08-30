@@ -24,7 +24,7 @@ to split the audio files into short segments for faster random access.
 #### Training example
 
 ```
-python ./trainSpeakerNet.py --save_path data/exp1 --augment_anchor --augment_type 2 --train_list /path/to/voxcelebs/train_list.txt  --test_list /path/to/voxcelebs/test_list.txt --train_path /path/to/voxcelebs/voxceleb2 --test_path /path/to/voxcelebs/voxceleb1 --musan_path /path/to/musan_split
+python ./trainSpeakerNet.py --log_input --save_path data/exp1 --augment_anchor --augment_type 2 --train_list /path/to/voxcelebs/train_list.txt  --test_list /path/to/voxcelebs/test_list.txt --train_path /path/to/voxcelebs/voxceleb2 --test_path /path/to/voxcelebs/voxceleb1 --musan_path /path/to/musan_split
 ```
 
 #### Pretrained model
@@ -34,7 +34,7 @@ A pretrained model can be downloaded from [here](http://www.robots.ox.ac.uk/~joo
 You can check that the following script returns: `EER 11.8134`.
 
 ```
-python ./trainSpeakerNet.py --eval --save_path data/test --test_list /path/to/voxcelebs/test_list.txt --test_path /path/to/voxcelebs/voxceleb1 --initial_model baseline_unsuper.model
+python ./trainSpeakerNet.py --eval --log_input --save_path data/test --test_list /path/to/voxcelebs/test_list.txt --test_path /path/to/voxcelebs/voxceleb1 --initial_model baseline_unsuper.model 
 ```
 
 #### Implemented loss functions
