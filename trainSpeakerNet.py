@@ -2,6 +2,7 @@
 #-*- coding: utf-8 -*-
 
 import sys, time, os, argparse, socket
+import yaml
 import numpy
 import pdb
 import torch
@@ -14,9 +15,11 @@ from DatasetLoader import get_data_loader
 
 parser = argparse.ArgumentParser(description = "SpeakerNet");
 
+parser.add_argument('--config', type=str, default=None,  help='Config YAML file');
+
 ## Data loader
 parser.add_argument('--max_frames', type=int, default=180,  help='Input length to the network');
-parser.add_argument('--eval_frames', type=int, default=350,  help='Input length to the network');
+parser.add_argument('--eval_frames', type=int, default=350,  help='Input length to the network; 0 uses the whole files');
 parser.add_argument('--batch_size', type=int, default=200,  help='Batch size');
 parser.add_argument('--nDataLoaderThread', type=int, default=20, help='Number of loader threads');
 
@@ -25,9 +28,9 @@ parser.add_argument('--test_interval', type=int, default=5, help='Test and save 
 parser.add_argument('--max_epoch',      type=int, default=150, help='Maximum number of epochs');
 parser.add_argument('--trainfunc', type=str, default="angleproto",    help='Loss function');
 parser.add_argument('--augment_anchor', dest='augment_anchor', action='store_true', help='Augment anchor')
-parser.add_argument('--augment_type',   type=int, default=3, help='0: no augment, 1: noise only, 2: noise or RIR');
+parser.add_argument('--augment_type',   type=int, default=2, help='0: no augment, 1: noise only, 2: noise or RIR');
 parser.add_argument('--n_mels',   type=int, default=40, help='Number of mel filterbanks');
-parser.add_argument('--log_input', dest='log_input', action='store_true', help='Log input features')
+parser.add_argument('--log_input', type=bool, default=False, help='Log input features')
 
 ## Learning rates
 parser.add_argument('--lr', type=float, default=0.001,      help='Learning rate');
@@ -53,6 +56,23 @@ parser.add_argument('--encoder_type', type=str, default="SAP",  help='Type of en
 parser.add_argument('--nOut', type=int,         default=512,    help='Embedding size in the last FC layer');
 
 args = parser.parse_args();
+
+## Parse YAML
+def find_option_type(key, parser):
+    for opt in parser._get_optional_actions():
+        if ('--' + key) in opt.option_strings:
+           return opt.type
+    raise ValueError
+
+if args.config is not None:
+    with open(args.config, "r") as f:
+        yml_config = yaml.load(f, Loader=yaml.FullLoader)
+    for k, v in yml_config.items():
+        if k in args.__dict__:
+            typ = find_option_type(k, parser)
+            args.__dict__[k] = typ(v)
+        else:
+            sys.stderr.write("Ignored unknown parameter {} in yaml.\n".format(k))
 
 ## Initialise directories
 model_save_path     = args.save_path+"/model"
