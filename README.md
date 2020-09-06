@@ -24,7 +24,7 @@ to split the audio files into short segments for faster random access.
 #### Training example
 
 ```
-python ./trainSpeakerNet.py --log_input True --save_path data/exp1 --augment_anchor --augment_type 2 --train_list /path/to/voxcelebs/train_list.txt  --test_list /path/to/voxcelebs/test_list.txt --train_path /path/to/voxcelebs/voxceleb2 --test_path /path/to/voxcelebs/voxceleb1 --musan_path /path/to/musan_split
+python ./trainSpeakerNet.py --model ResNetSE34L --log_input True --save_path data/exp1 --augment_anchor True --augment_type 2 --train_list /path/to/voxcelebs/train_list.txt  --test_list /path/to/voxcelebs/test_list.txt --train_path /path/to/voxcelebs/voxceleb2 --test_path /path/to/voxcelebs/voxceleb1 --musan_path /path/to/musan_split
 ```
 
 The arguments can also be passed as `--config path_to_config.yaml`. Note that the configuration file overrides the arguments passed via command line.

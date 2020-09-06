@@ -18,42 +18,45 @@ parser = argparse.ArgumentParser(description = "SpeakerNet");
 parser.add_argument('--config', type=str, default=None,  help='Config YAML file');
 
 ## Data loader
-parser.add_argument('--max_frames', type=int, default=180,  help='Input length to the network');
-parser.add_argument('--eval_frames', type=int, default=350,  help='Input length to the network; 0 uses the whole files');
-parser.add_argument('--batch_size', type=int, default=200,  help='Batch size');
-parser.add_argument('--nDataLoaderThread', type=int, default=20, help='Number of loader threads');
+parser.add_argument('--max_frames',     type=int,   default=180,    help='Input length to the network for training');
+parser.add_argument('--eval_frames',    type=int,   default=300,    help='Input length to the network for testing; 0 uses the whole files');
+parser.add_argument('--batch_size',     type=int,   default=200,    help='Batch size, number of speakers per batch');
+parser.add_argument('--nDataLoaderThread', type=int, default=5,     help='Number of loader threads');
 
 ## Training details
-parser.add_argument('--test_interval', type=int, default=5, help='Test and save every [test_interval] epochs');
-parser.add_argument('--max_epoch',      type=int, default=150, help='Maximum number of epochs');
-parser.add_argument('--trainfunc', type=str, default="angleproto",    help='Loss function');
-parser.add_argument('--augment_anchor', dest='augment_anchor', action='store_true', help='Augment anchor')
-parser.add_argument('--augment_type',   type=int, default=2, help='0: no augment, 1: noise only, 2: noise or RIR');
-parser.add_argument('--n_mels',   type=int, default=40, help='Number of mel filterbanks');
-parser.add_argument('--log_input', type=bool, default=False, help='Log input features')
+parser.add_argument('--test_interval',  type=int,   default=5,      help='Test and save every [test_interval] epochs');
+parser.add_argument('--max_epoch',      type=int,   default=150,    help='Maximum number of epochs');
+parser.add_argument('--trainfunc',      type=str,   default="angleproto", help='Loss function');
+parser.add_argument('--augment_anchor', type=bool,  default=False,  help='Augment anchor as well as positive')
+parser.add_argument('--augment_type',   type=int,   default=2,      help='0: no augment, 1: noise only, 2: noise or RIR');
 
-## Learning rates
-parser.add_argument('--lr', type=float, default=0.001,      help='Learning rate');
-parser.add_argument("--lr_decay", type=float, default=0.95, help='Learning rate decay every [test_interval] epochs');
+## Optimizer
+parser.add_argument('--optimizer',      type=str,   default="adam", help='sgd or adam');
+parser.add_argument('--scheduler',      type=str,   default="steplr", help='Learning rate scheduler');
+parser.add_argument('--lr',             type=float, default=0.001,  help='Learning rate');
+parser.add_argument("--lr_decay",       type=float, default=0.95,   help='Learning rate decay every [test_interval] epochs');
+parser.add_argument('--weight_decay',   type=float, default=0,      help='Weight decay in the optimizer');
 
 ## Load and save
-parser.add_argument('--initial_model',  type=str, default="", help='Initial model weights');
-parser.add_argument('--save_path',      type=str, default="./data/exp1", help='Path for model and logs');
+parser.add_argument('--initial_model',  type=str,   default="",     help='Initial model weights');
+parser.add_argument('--save_path',      type=str,   default="./data/exp1", help='Path for model and logs');
 
 ## Training and test data
-parser.add_argument('--train_list', type=str, default="",   help='Train list');
-parser.add_argument('--test_list',  type=str, default="",   help='Evaluation list');
-parser.add_argument('--train_path', type=str, default="voxceleb2", help='Absolute path to the train set');
-parser.add_argument('--test_path',  type=str, default="voxceleb1", help='Absolute path to the test set');
-parser.add_argument('--musan_path',  type=str, default="musan_split", help='Absolute path to the test set');
+parser.add_argument('--train_list',     type=str,   default="",     help='Train list');
+parser.add_argument('--test_list',      type=str,   default="",     help='Evaluation list');
+parser.add_argument('--train_path',     type=str,   default="voxceleb2", help='Absolute path to the train set');
+parser.add_argument('--test_path',      type=str,   default="voxceleb1", help='Absolute path to the test set');
+parser.add_argument('--musan_path',     type=str,   default="musan_split", help='Absolute path to the test set');
+
+## Model definition
+parser.add_argument('--n_mels',         type=int,   default=40,     help='Number of mel filterbanks');
+parser.add_argument('--log_input',      type=bool,  default=False,  help='Log input features')
+parser.add_argument('--model',          type=str,   default="",     help='Name of model definition');
+parser.add_argument('--encoder_type',   type=str,   default="SAP",  help='Type of encoder');
+parser.add_argument('--nOut',           type=int,   default=512,    help='Embedding size in the last FC layer');
 
 ## For test only
 parser.add_argument('--eval', dest='eval', action='store_true', help='Eval only')
-
-## Model definition
-parser.add_argument('--model', type=str,        default="ResNetSE34L",     help='Name of model definition');
-parser.add_argument('--encoder_type', type=str, default="SAP",  help='Type of encoder');
-parser.add_argument('--nOut', type=int,         default=512,    help='Embedding size in the last FC layer');
 
 args = parser.parse_args();
 
@@ -90,6 +93,7 @@ s = SpeakerNet(**vars(args));
 it          = 1;
 prevloss    = float("inf");
 sumloss     = 0;
+min_eer     = [100];
 
 ## Load model weights
 modelfiles = glob.glob('%s/model0*.model'%model_save_path)
@@ -104,9 +108,8 @@ elif(args.initial_model != ""):
     print("Model %s loaded!"%args.initial_model);
 
 for ii in range(0,it-1):
-    if ii % args.test_interval == 0:
-        clr = s.updateLearningRate(args.lr_decay) 
-
+    s.__scheduler__.step()
+        
 ## Evaluation code
 if args.eval == True:
         
@@ -149,9 +152,10 @@ scorefile = open(result_save_path+"/scores.txt", "a+");
 ## Initialise data loader
 trainLoader = get_data_loader(args.train_list, **vars(args));
 
-clr = s.updateLearningRate(1)
-
 while(1):   
+
+    clr = [x['lr'] for x in s.__optimizer__.param_groups]
+
     print(time.strftime("%Y-%m-%d %H:%M:%S"), it, "Training %s with LR %f..."%(args.model,max(clr)));
 
     ## Train network
@@ -165,13 +169,12 @@ while(1):
         sc, lab, _ = s.evaluateFromList(args.test_list, print_interval=100, test_path=args.test_path, eval_frames=args.eval_frames)
         result = tuneThresholdfromScore(sc, lab, [1, 0.1]);
 
-        print(args.save_path);
-        print(time.strftime("%Y-%m-%d %H:%M:%S"), "LR %f, TEER/TAcc %2.2f, TLOSS %f, VEER %2.4f"%( max(clr), traineer, loss, result[1]));
-        scorefile.write("IT %d, LR %f, TEER/TAcc %2.2f, TLOSS %f, VEER %2.4f\n"%(it, max(clr), traineer, loss, result[1]));
+        min_eer.append(result[1])
+
+        print(time.strftime("%Y-%m-%d %H:%M:%S"), "LR %f, TEER/TAcc %2.2f, TLOSS %f, VEER %2.4f, MINEER %2.4f"%( max(clr), traineer, loss, result[1], min(min_eer)));
+        scorefile.write("IT %d, LR %f, TEER/TAcc %2.2f, TLOSS %f, VEER %2.4f, MINEER %2.4f\n"%(it, max(clr), traineer, loss, result[1], min(min_eer)));
 
         scorefile.flush()
-
-        clr = s.updateLearningRate(args.lr_decay) 
 
         s.saveParameters(model_save_path+"/model%09d.model"%it);
         

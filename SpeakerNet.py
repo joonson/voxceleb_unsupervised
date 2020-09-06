@@ -12,22 +12,24 @@ from DatasetLoader import loadWAV
 
 class SpeakerNet(nn.Module):
 
-    def __init__(self, lr = 0.0001, model="alexnet50", nOut = 512, encoder_type = 'SAP', normalize = True, trainfunc='contrastive', n_mels=40, log_input=True, **kwargs):
+    def __init__(self, model, optimizer, scheduler, trainfunc, **kwargs):
         super(SpeakerNet, self).__init__();
 
-        argsdict = {'nOut': nOut, 'encoder_type':encoder_type, 'log_input':log_input, 'n_mels':n_mels}
-
         SpeakerNetModel = importlib.import_module('models.'+model).__getattribute__('MainModel')
-        self.__S__ = SpeakerNetModel(**argsdict).cuda();
+        self.__S__ = SpeakerNetModel(**kwargs).cuda();
 
         LossFunction = importlib.import_module('loss.'+trainfunc).__getattribute__('LossFunction')
-        self.__L__ = LossFunction(**argsdict).cuda();
+        self.__L__ = LossFunction(**kwargs).cuda();
 
-        self.__optimizer__ = torch.optim.Adam(list(self.__S__.parameters()) + list(self.__L__.parameters()), lr = lr);
+        Optimizer = importlib.import_module('optimizer.'+optimizer).__getattribute__('Optimizer')
+        self.__optimizer__ = Optimizer(self.parameters(), **kwargs)
 
-        self.torchfb        = transforms.MelSpectrogram(sample_rate=16000, n_fft=512, win_length=400, hop_length=160, f_min=0.0, f_max=8000, pad=0, n_mels=n_mels).cuda();
+        Scheduler = importlib.import_module('scheduler.'+scheduler).__getattribute__('Scheduler')
+        self.__scheduler__, self.lr_step = Scheduler(self.__optimizer__, **kwargs)
 
-        print('Initialised network with nOut %d encoder_type %s'%(nOut,encoder_type))
+        assert self.lr_step in ['epoch', 'iteration']
+		
+        self.torchfb    = transforms.MelSpectrogram(sample_rate=16000, n_fft=512, win_length=400, hop_length=160, f_min=0.0, f_max=8000, pad=0, n_mels=kwargs['n_mels']).cuda();
 
     ## ===== ===== ===== ===== ===== ===== ===== =====
     ## Train network
@@ -79,6 +81,10 @@ class SpeakerNet(nn.Module):
             sys.stdout.write("Loss %f EER/TAcc %2.3f%% - %.2f Hz "%(loss/counter, top1/counter, stepsize/telapsed));
             sys.stdout.flush();
 
+            if self.lr_step == 'iteration': self.__scheduler__.step()
+
+        if self.lr_step == 'epoch': self.__scheduler__.step()
+
         sys.stdout.write("\n");
         
         return (loss/counter, top1/counter);
@@ -88,9 +94,7 @@ class SpeakerNet(nn.Module):
     ## Evaluate from list
     ## ===== ===== ===== ===== ===== ===== ===== =====
 
-    def evaluateFromList(self, listfilename, print_interval=100, test_path='', num_eval=10, eval_frames=200):
-
-        print('Evaluating with NumEval %d EvalFrames %d Normalize %s'%(num_eval,eval_frames,self.__L__.test_normalize))
+    def evaluateFromList(self, listfilename, print_interval=100, test_path='', num_eval=10, eval_frames=None):
         
         self.eval();
         
@@ -103,7 +107,7 @@ class SpeakerNet(nn.Module):
         with open(listfilename) as listfile:
             while True:
                 line = listfile.readline();
-                if (not line): 
+                if (not line):
                     break;
 
                 data = line.split();
@@ -175,20 +179,6 @@ class SpeakerNet(nn.Module):
         print('\n')
 
         return (all_scores, all_labels, all_trials);
-
-
-    ## ===== ===== ===== ===== ===== ===== ===== =====
-    ## Update learning rate
-    ## ===== ===== ===== ===== ===== ===== ===== =====
-
-    def updateLearningRate(self, alpha):
-
-        learning_rate = []
-        for param_group in self.__optimizer__.param_groups:
-            param_group['lr'] = param_group['lr']*alpha
-            learning_rate.append(param_group['lr'])
-
-        return learning_rate;
 
 
     ## ===== ===== ===== ===== ===== ===== ===== =====
