@@ -4,8 +4,12 @@
 *.mp4
 *.txt
 *.pcm
+*.nsml
+setup.py
 data/
 tests/
+exps/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

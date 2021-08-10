@@ -34,6 +34,6 @@ class LossFunction(nn.Module):
         
         label       = torch.from_numpy(numpy.asarray(range(0,stepsize))).cuda()
         nloss       = self.criterion(cos_sim_matrix, label)
-        prec1, _    = accuracy(cos_sim_matrix.detach().cpu(), label.detach().cpu(), topk=(1, 5))
+        prec1, _    = accuracy(cos_sim_matrix.detach().cpu(), label.detach().cpu(), topk=(1, 2))
 
         return nloss, prec1

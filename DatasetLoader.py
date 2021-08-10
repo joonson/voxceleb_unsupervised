@@ -22,7 +22,7 @@ def worker_init_fn(worker_id):
     numpy.random.seed(numpy.random.get_state()[1][0] + worker_id)
 
 class wav_split(Dataset):
-    def __init__(self, dataset_file_name, max_frames, train_path, musan_path, augment_anchor, augment_type, n_mels):
+    def __init__(self, dataset_file_name, max_frames, train_path, musan_path, alpha, augment_anchor, augment_type, n_mels):
         self.dataset_file_name = dataset_file_name;
         self.max_frames = max_frames;
 
@@ -36,6 +36,7 @@ class wav_split(Dataset):
 
         self.noisesnr = {'noise':[0,15],'speech':[13,20],'music':[5,15]}
         self.noiselist = {}
+        self.alpha  = alpha
         self.augment_anchor = augment_anchor
         self.augment_type   = augment_type
 
@@ -87,11 +88,15 @@ class wav_split(Dataset):
                     augment_profiles.append({'rir_filt':rir_filts, 'rir_gain':rir_gains, 'add_noise': None, 'add_snr': None})
                 else:
                     augment_profiles.append({'rir_filt':None, 'rir_gain':None, 'add_noise': noisefile, 'add_snr': snr})
+            elif self.augment_type == 3:
+                augment_profiles.append({'rir_filt':rir_filts, 'rir_gain':rir_gains, 'add_noise': noisefile, 'add_snr': snr})
             else:
                 raise ValueError('Invalid augment profile %d'%(self.augment_type))
 
         
         audio_aug.append(self.augment_wav(audio[0],augment_profiles[0]))
+        if self.alpha > 0:
+            audio_aug.append(self.augment_wav(audio[1],augment_profiles[0]))
         audio_aug.append(self.augment_wav(audio[1],augment_profiles[1]))
 
         audio_aug = numpy.concatenate(audio_aug,axis=0)
@@ -205,9 +210,9 @@ def loadWAVSplit(filename, max_frames):
     return feat;
 
 
-def get_data_loader(dataset_file_name, batch_size, max_frames, nDataLoaderThread, train_path, augment_anchor, augment_type, musan_path, n_mels, **kwargs):
+def get_data_loader(dataset_file_name, batch_size, max_frames, nDataLoaderThread, train_path, alpha, augment_anchor, augment_type, musan_path, n_mels, **kwargs):
     
-    train_dataset = wav_split(dataset_file_name, max_frames, train_path, musan_path, augment_anchor, augment_type, n_mels)
+    train_dataset = wav_split(dataset_file_name, max_frames, train_path, musan_path, alpha, augment_anchor, augment_type, n_mels)
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -217,6 +222,7 @@ def get_data_loader(dataset_file_name, batch_size, max_frames, nDataLoaderThread
         pin_memory=False,
         drop_last=True,
         worker_init_fn=worker_init_fn,
+        prefetch_factor=5,
     )
     
 

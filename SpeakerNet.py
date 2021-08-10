@@ -9,6 +9,7 @@ import numpy, math, pdb, sys, random
 import time, os, itertools, shutil, importlib
 from tuneThreshold import tuneThresholdfromScore
 from DatasetLoader import loadWAV
+from ConfModel import *
 
 class SpeakerNet(nn.Module):
 
@@ -21,21 +22,23 @@ class SpeakerNet(nn.Module):
         LossFunction = importlib.import_module('loss.'+trainfunc).__getattribute__('LossFunction')
         self.__L__ = LossFunction(**kwargs).cuda();
 
+        self.__S2E__ = ConfModelBC(num_layers=1, **kwargs).cuda();
+
         Optimizer = importlib.import_module('optimizer.'+optimizer).__getattribute__('Optimizer')
-        self.__optimizer__ = Optimizer(self.parameters(), **kwargs)
+        self.__optimizer__ = Optimizer(list(self.__S__.parameters()) + list(self.__L__.parameters()), **kwargs);
+        self.__optimizerS2E__ = Optimizer(self.__S2E__.parameters(), **kwargs);
 
         Scheduler = importlib.import_module('scheduler.'+scheduler).__getattribute__('Scheduler')
         self.__scheduler__, self.lr_step = Scheduler(self.__optimizer__, **kwargs)
 
         assert self.lr_step in ['epoch', 'iteration']
-		
         self.torchfb    = transforms.MelSpectrogram(sample_rate=16000, n_fft=512, win_length=400, hop_length=160, f_min=0.0, f_max=8000, pad=0, n_mels=kwargs['n_mels']).cuda();
 
     ## ===== ===== ===== ===== ===== ===== ===== =====
     ## Train network
     ## ===== ===== ===== ===== ===== ===== ===== =====
 
-    def train_network(self, loader):
+    def train_network(self, loader, alpha=1, num_steps=1):
 
         self.train();
 
@@ -64,7 +67,43 @@ class SpeakerNet(nn.Module):
 
             feat = torch.stack(feat,dim=1).squeeze()
 
-            nloss, prec1 = self.__L__.forward(feat,None)
+            if alpha > 0:
+
+                out_a_ = feat[:,0,:].detach()
+                out_s_ = feat[:,1,:].detach()
+                out_p_ = feat[:,2,:].detach()
+
+                # # ==================== TRAIN DISCRIMINATOR ====================
+
+                for ii in range(0,num_steps):
+
+                    conf_input = torch.cat((torch.cat((out_a_,out_s_),1),torch.cat((out_a_,out_p_),1)),0)
+
+                    conf_output = self.__S2E__(conf_input)
+
+                    dloss1  = criterion(conf_output, conf_labels)
+
+                    dloss1.backward();
+                    self.__optimizerS2E__.step();
+                    self.__optimizerS2E__.zero_grad();
+
+                    # print(dloss1)
+
+                # # ==================== TRAIN NORMAL AND BACKPROP THROUGH DISCRIMINATOR ====================
+
+                conf_input = torch.cat((torch.cat((feat[:,0,:],feat[:,1,:]),1),torch.cat((feat[:,0,:],feat[:,2,:]),1)),0)
+
+                conf_output = self.__S2E__(conf_input)
+
+                conf_loss   = criterion(conf_output, conf_labels)
+
+                nloss, prec1 = self.__L__.forward(feat[:,[0,2],:],None)
+
+                nloss += conf_loss * alpha
+
+            else:
+                conf_loss   = 0
+                nloss, prec1 = self.__L__.forward(feat,None)
 
             loss    += nloss.detach().cpu();
             top1    += prec1
@@ -107,7 +146,7 @@ class SpeakerNet(nn.Module):
         with open(listfilename) as listfile:
             while True:
                 line = listfile.readline();
-                if (not line):
+                if (not line): 
                     break;
 
                 data = line.split();
