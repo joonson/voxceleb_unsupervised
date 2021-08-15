@@ -39,6 +39,10 @@ You can check that the following script returns: `EER 11.8134`.
 python ./trainSpeakerNet.py --eval --log_input True --save_path data/test --test_list /path/to/voxcelebs/test_list.txt --test_path /path/to/voxcelebs/voxceleb1 --initial_model baseline_unsuper.model 
 ```
 
+A model trained using `--augment_type 3 --env_iteration 1 --alpha 3` in addition to the above parameters above can be downloaded from [here](http://www.robots.ox.ac.uk/~joon/data/baseline_unsuper_aat.model).
+
+You can check that the following script returns: `EER 8.4995`.
+
 #### Implemented loss functions
 ```
 Prototypical (proto)
